@@ -187,9 +187,12 @@ class Geometry {
 	 * @returns {number} The angle clamped between 0 and π.
 	 */
 	angle(c) {
-		// TODO
+		// first let us get the half edge associated with this angle 
+		let adjacent = this.vector(c.halfedge.next).unit();
+		let hypotenuse = this.vector(c.halfedge.next.next).unit().negated();
 
-		return 0.0; // placeholder
+		// now we use the dot product formula to calculate the angle between them
+		return Math.acos(adjacent.dot(hypotenuse));
 	}
 
 	/**
@@ -199,9 +202,15 @@ class Geometry {
 	 * @returns {number}
 	 */
 	cotan(h) {
-		// TODO
+		// first we get the length of this opposite half edge
+		let v = this.vector(h.next.twin);
+		// then we must get the length of adjacent halfedge
+		let u = this.vector(h.next.next);
+		// get this length using the cross product formula
+		let cotan = u.dot(v)/(u.cross(v).norm());
 
-		return 0.0; // placeholder
+
+		return cotan; // placeholder
 	}
 
 	/**
@@ -212,9 +221,17 @@ class Geometry {
 	 * @returns {number} The dihedral angle.
 	 */
 	dihedralAngle(h) {
-		// TODO
+		// get the normal of the face associated with this halfedge
+		let face_normal_1 = this.faceNormal(h.face);
+		// now get the edge and length corresponding to the halfedge
+		let edge = this.vector(h).unit();
+		//get the normal of the adjacent face to this edge
+		let face_normal_2 = this.faceNormal(h.twin.face);
 
-		return 0.0; // placeholder
+		// now we use the angle formula given the following
+		let theta = Math.atan2(edge.dot(face_normal_1.cross(face_normal_2)), face_normal_1.dot(face_normal_2));
+
+		return theta; // placeholder
 	}
 
 	/**
@@ -224,9 +241,15 @@ class Geometry {
 	 * @returns {number}
 	 */
 	barycentricDualArea(v) {
-		// TODO
+		// to compute the barycentric dual we iterate through all faces adjacent to this vertex
+		// and sum up their areas, and afterwards divide by 3
+		let area = 0;
+		for (let f of v.adjacentFaces()){
+			area += this.area(f);
+		}
 
-		return 0.0; // placeholder
+		// divide by 3 to get the barycentric dual area
+		return (1/3)*area; // placeholder
 	}
 
 	/**
@@ -237,9 +260,21 @@ class Geometry {
 	 * @returns {number}
 	 */
 	circumcentricDualArea(v) {
-		// TODO
+		let a = 0;
+		for (let c of v.adjacentCorners()) {
+			let hedge1 = c.halfedge.next;
+			let hedge2 = c.halfedge.next;
 
-		return 0.0; // placeholder
+			let edge1 = this.vector(hedge1);
+			let edge2 = this.vector(hedge2);
+
+			let alpha = this.cotan(hedge1);
+			let beta = this.cotan(hedge2);
+
+			a += edge1.norm2()*alpha + edge2.norm2()*beta;
+		}
+
+		return a/8; 
 	}
 
 	/**
@@ -268,9 +303,25 @@ class Geometry {
 	 * @returns {module:LinearAlgebra.Vector}
 	 */
 	vertexNormalAreaWeighted(v) {
-		// TODO
+		let n = new Vector();
+		for (let f of v.adjacentFaces()) {
+			let normal = this.faceNormal(f);
+			let face_area = this.area(f);
 
-		return new Vector(); // placeholder
+			// here we weight each normal by the area of its associated triangular face
+			// for some reason the scaling operation isn't working so I'm just going to manually scale the normal vectors
+			normal.x *= face_area;
+			normal.y *= face_area;
+			normal.z *= face_area;
+
+			// now we increment our normal vector which is the sum of the face weighted areas
+			n.incrementBy(normal);
+		}
+
+		// normalize and return
+		n.normalize();
+
+		return n; // placeholder
 	}
 
 	/**
@@ -280,9 +331,24 @@ class Geometry {
 	 * @returns {module:LinearAlgebra.Vector}
 	 */
 	vertexNormalAngleWeighted(v) {
-		// TODO
+		// what we will do first is loop over the faces containing the vertex i 
+		// it seems like the problem ehre is with the angle functions output
+		let n = new Vector();
+		for (let corner of v.adjacentCorners()) {
+			let angle = this.angle(corner);
+			let normal = this.faceNormal(corner.halfedge.face);
 
-		return new Vector(); // placeholder
+			//now we will scale the normal with the associated angle
+			normal.x *= angle;
+			normal.y *= angle;
+			normal.z *= angle;
+
+			n.incrementBy(normal);
+		}
+
+		n.normalize();
+
+		return n; // placeholder
 	}
 
 	/**
@@ -292,9 +358,28 @@ class Geometry {
 	 * @returns {module:LinearAlgebra.Vector}
 	 */
 	vertexNormalGaussCurvature(v) {
-		// TODO
+		// it seems like the problem here is with the dihedral angle function (prob )
+		let n = new Vector();
+		// it seems like the problem here maybe over the edges being iterated (i.e) orentation of the edge vector??
+		for (let e of v.adjacentEdges()) {
+			let angle = this.dihedralAngle(e.halfedge);
+			let edge = this.vector(e.halfedge).unit();
 
-		return new Vector(); // placeholder
+			let scaling_factor = angle;
+			edge.x *= scaling_factor;
+			edge.y *= scaling_factor;
+			edge.z *= scaling_factor;
+
+			n.incrementBy(edge);
+		}
+
+		//now scale it by 1/2
+		n.x *= (0.5);
+		n.y *= (0.5);
+		n.z *= (0.5);
+
+		n.normalize();
+		return n; 
 	}
 
 	/**
@@ -304,9 +389,28 @@ class Geometry {
 	 * @returns {module:LinearAlgebra.Vector}
 	 */
 	vertexNormalMeanCurvature(v) {
-		// TODO
+		let n = new Vector();
+		for (let e of v.adjacentEdges()) {
+			let edge = this.vector(e.halfedge);
+			let cotan_1 = this.cotan(e.halfedge);
+			let cotan_2 = this.cotan(e.halfedge.twin);
 
-		return new Vector(); // placeholder
+			let scaling_factor = cotan_1 + cotan_2;
+			edge.x *= scaling_factor;
+			edge.y *= scaling_factor;
+			edge.z *= scaling_factor;
+
+			n.incrementBy(edge);
+		}
+
+		//now scale it by 1/2
+		n.x *= (0.5);
+		n.y *= (0.5);
+		n.z *= (0.5);
+
+		n.normalize();
+
+		return n; // placeholder
 	}
 
 	/**
@@ -316,9 +420,32 @@ class Geometry {
 	 * @returns {module:LinearAlgebra.Vector}
 	 */
 	vertexNormalSphereInscribed(v) {
-		// TODO
+		let n = new Vector();
+		for (let c of v.adjacentCorners()) {
+			let edge_1 = this.vector(c.halfedge.next);
+			let edge_2 = this.vector(c.halfedge.next.next);
+			
+			// now swap the orientation of one of them so they're the same
+			edge_2.negated();
 
-		return new Vector(); // placeholder
+			// now let's get the scaling factor for the new "normal"
+			let scaling_factor = 1/(edge_1.norm()*edge_1.norm()*edge_2.norm()*edge_2.norm());
+			// now let's get the vector associated with this new "normal"
+			let normal = edge_1.cross(edge_2);
+
+			// since scaling isn't working we scale normal by scaling_factor
+			normal.x *= scaling_factor;
+			normal.y *= scaling_factor;
+			normal.z *= scaling_factor;
+
+			// finally we add this to our n vector
+			n.incrementBy(normal);
+		}
+
+		//normalize n
+		n.normalize();
+
+		return n; 
 	}
 
 	/**
@@ -329,9 +456,15 @@ class Geometry {
 	 * @returns {number}
 	 */
 	angleDefect(v) {
-		// TODO
+		let angle_defect = 2*Math.PI;
 
-		return 0.0; // placeholder
+		//Now lets iterate through the corners adjacent to v and calculate the angle!
+		for (let c of v.adjacentCorners()) {
+			let angle = this.angle(c);
+			angle_defect -= angle;
+		}
+
+		return angle_defect; // placeholder
 	}
 
 	/**
@@ -351,9 +484,17 @@ class Geometry {
 	 * @returns {number}
 	 */
 	scalarMeanCurvature(v) {
-		// TODO
+		let mean_curvature = 0;
+		for (let e of v.adjacentEdges()) {
+			let edge_length = this.length(e);
+			let dihedral_angle = this.dihedralAngle(e.halfedge);
+			mean_curvature += edge_length*dihedral_angle;
+		}
 
-		return 0.0; // placeholder
+		// finally scale the mean curvature by 1/2
+		mean_curvature = mean_curvature/2;
+
+		return mean_curvature;
 	}
 
 	/**
@@ -362,9 +503,8 @@ class Geometry {
 	 * @returns {number}
 	 */
 	totalAngleDefect() {
-		// TODO
-
-		return 0.0; // placeholder
+		// utilize the Gauss-Bonnet Theorem
+		return 2*Math.PI*this.mesh.eulerCharacteristic();
 	}
 
 	/**
@@ -374,9 +514,12 @@ class Geometry {
 	 * @returns {number[]} An array containing the minimum and maximum principal curvature values at a vertex.
 	 */
 	principalCurvatures(v) {
-		// TODO
+		let K = this.scalarGaussCurvature(v);
+		let H = this.scalarMeanCurvature(v);
+		let k1 = Math.max(H + Math.sqrt(H*H - K), H - Math.sqrt(H*H - K));
+		let k2 = Math.min(H + Math.sqrt(H*H - K), H - Math.sqrt(H*H - K));
 
-		return [0.0, 0.0]; // placeholder
+		return [k2, k1]; // placeholder
 	}
 
 	/**
